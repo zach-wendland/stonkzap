@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     allow_unofficial: bool = False
     dry_run: bool = False
 
+    # Logging
+    log_level: str = "INFO"
+
+    # Rate Limiting
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 100
+    rate_limit_window: int = 60  # seconds
+
     # Database
     database_url: str = "postgresql+psycopg://user:pass@localhost:5432/sentiment"
     redis_url: str = "redis://localhost:6379/0"
