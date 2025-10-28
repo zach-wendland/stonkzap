@@ -29,9 +29,11 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window: int = 60  # seconds
 
-    # Database
-    database_url: str = "postgresql+psycopg://user:pass@localhost:5432/sentiment"
-    redis_url: str = "redis://localhost:6379/0"
+    # Database (optional - uses in-memory storage by default)
+    use_postgres: bool = False
+    database_url: str = ""
+    use_redis: bool = False
+    redis_url: str = ""
 
     class Config:
         env_file = ".env"
