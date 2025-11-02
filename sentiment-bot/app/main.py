@@ -64,22 +64,134 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Log startup information."""
+    """
+    Initialize application on startup.
+
+    THEORY OF MIND:
+    You want the app to fail fast if there's a problem.
+    Better to crash at startup than serve bad requests!
+    """
     logger.info("Starting Sentiment Bot API")
     logger.info(f"Dry run mode: {settings.dry_run}")
     logger.info(f"Rate limiting: {settings.rate_limit_enabled}")
     logger.info(f"Allow unofficial sources: {settings.allow_unofficial}")
 
+    # Initialize database pool if PostgreSQL is enabled
+    if settings.use_postgres:
+        try:
+            from app.storage.db_pool import initialize_pool
+            from app.storage.migrations import run_migrations
+
+            logger.info("PostgreSQL enabled - initializing connection pool...")
+
+            # Run any pending migrations
+            if run_migrations(settings.database_url):
+                logger.info("✓ Database migrations complete")
+            else:
+                logger.warning("⚠ Migration issues detected - check logs")
+
+            # Initialize the connection pool
+            pool = initialize_pool()
+            if pool and pool.health_check():
+                logger.info("✓ Database pool healthy and ready")
+            else:
+                logger.error("✗ Database pool health check failed")
+
+        except Exception as e:
+            logger.error(f"✗ Database initialization failed: {e}")
+            logger.info("Continuing with in-memory storage as fallback")
+    else:
+        logger.info("Using in-memory storage (no database)")
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Log shutdown information."""
+    """
+    Cleanup on shutdown.
+
+    WHAT THIS DOES:
+    - Closes database connections gracefully
+    - Prevents connection leaks
+    - Allows time for in-flight requests
+    """
     logger.info("Shutting down Sentiment Bot API")
+
+    # Close database pool if it was initialized
+    if settings.use_postgres:
+        try:
+            from app.storage.db_pool import close_pool
+            close_pool()
+            logger.info("Database pool closed")
+        except Exception as e:
+            logger.error(f"Error closing database pool: {e}")
 
 @app.get("/healthz")
 def health_check():
-    """Health check endpoint."""
+    """
+    Basic health check endpoint.
+
+    Returns application status without dependencies.
+    """
     logger.debug("Health check requested")
     return healthcheck()
+
+@app.get("/healthz/db")
+def database_health_check():
+    """
+    Database-specific health check.
+
+    WHAT THIS CHECKS:
+    - Is PostgreSQL enabled?
+    - Can we connect to the database?
+    - Is the connection pool healthy?
+    - What's the pool utilization?
+
+    THEORY OF MIND:
+    You want to monitor database health separately because:
+    - Database issues are common in production
+    - Need to know pool utilization before it's exhausted
+    - Monitoring systems can alert on specific issues
+    - Helps diagnose "why is it slow?" questions
+    """
+    if not settings.use_postgres:
+        return {
+            "status": "not_applicable",
+            "backend": "in_memory",
+            "message": "PostgreSQL not enabled - using in-memory storage"
+        }
+
+    try:
+        from app.storage.db_pool import get_pool
+        import time
+
+        pool = get_pool()
+
+        # Time a simple query
+        start = time.time()
+        is_healthy = pool.health_check()
+        query_time_ms = (time.time() - start) * 1000
+
+        if is_healthy:
+            stats = pool.get_stats()
+            return {
+                "status": "healthy",
+                "backend": "postgresql",
+                "query_time_ms": round(query_time_ms, 2),
+                "pool": stats
+            }
+        else:
+            return {
+                "status": "unhealthy",
+                "backend": "postgresql",
+                "message": "Database health check failed"
+            }
+
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return {
+            "status": "error",
+            "backend": "postgresql",
+            "error": str(e)
+        }
 
 @app.get("/query")
 def query_sentiment(
