@@ -1,4 +1,4 @@
-# Database Integration Guide
+# Database Integration Guide (Docker-Free)
 
 ## Understanding the Why (Theory of Mind)
 
@@ -19,264 +19,264 @@
 - Support for scaling to multiple servers
 - Advanced query capabilities
 
-## Step-by-Step Setup (With Context)
+## PostgreSQL Setup Options (No Docker Required!)
 
-### Step 1: Understanding PostgreSQL + pgvector
+### Option 1: Use a Cloud-Hosted Database (Recommended)
 
-**What you're installing:** PostgreSQL with the pgvector extension.
+**WHY THIS IS EASIEST:**
+- No installation needed
+- Managed backups and updates
+- High availability out of the box
+- Free tiers available
+- Production-ready immediately
 
-**Why PostgreSQL?**
-- Industry standard, battle-tested
-- Excellent JSON support for metadata
-- ACID compliance (your data stays consistent)
-- Great indexing for fast queries
+#### DigitalOcean Managed PostgreSQL
+```bash
+# 1. Create database at https://cloud.digitalocean.com/databases
+# 2. Select PostgreSQL 16
+# 3. Choose your region
+# 4. Select basic plan ($15/month) or dev plan ($7/month)
+# 5. Copy the connection string
 
-**Why pgvector?**
-- You'll store embeddings (768-dimensional vectors) for each post
-- pgvector makes similarity search fast: "Find posts similar to this one"
-- Without it, you'd need a separate vector database (more complexity)
-
-**What this enables:**
-```
-"Find all posts about AAPL with similar sentiment to this one"
-→ This is semantic search, not just keyword matching
-```
-
-### Step 2: The Schema Design (Each Table Explained)
-
-**You might wonder:** "Why so many tables? Can't I just dump everything in one?"
-
-**Here's the reasoning:**
-
-#### `social_posts` - The Core Data
-**What it stores:** Every social media post we collect
-**Why separate:** This is your source of truth. Everything else derives from it.
-**Key insight:** We use (source, platform_id) as a unique constraint because:
-  - Different platforms use different ID formats
-  - A post from Reddit with ID "abc123" is different from Twitter's "abc123"
-  - This prevents duplicate ingestion
-
-#### `post_embeddings` - The Semantic Layer
-**What it stores:** Vector representations of posts (768 numbers per post)
-**Why separate:**
-  - Embeddings are large (3KB+ per post)
-  - Not every post needs an embedding
-  - Makes it optional and doesn't bloat the main table
-**Key insight:** Using VECTOR(768) type from pgvector enables fast similarity search
-
-#### `sentiment` - The Analysis Results
-**What it stores:** Sentiment scores (polarity, subjectivity, sarcasm)
-**Why separate:**
-  - You might re-score posts with better models
-  - Keeps analysis separate from raw data
-  - Allows multiple sentiment models side-by-side
-**Key insight:** The `model` field lets you track which algorithm produced each score
-
-#### `resolver_cache` - The Performance Boost
-**What it stores:** Symbol lookups (e.g., "Apple" → "AAPL")
-**Why separate:**
-  - Symbol resolution can be slow (API calls)
-  - Cache hits save time and money
-  - 7-day expiration balances freshness vs performance
-**Key insight:** This is a classic cache pattern - optimize the slow operation
-
-#### `source_accounts` - The Metadata
-**What it stores:** Information about who's posting
-**Why separate:**
-  - Track follower counts over time
-  - Identify influential accounts
-  - Filter bot accounts
-**Key insight:** Helps you weight sentiment by account influence
-
-### Step 3: Indexes (The Speed Secret)
-
-**You might think:** "Indexes are advanced. Can I skip them?"
-
-**Reality check:** Without indexes, your queries will be SLOW.
-
-**What each index does:**
-
-```sql
-CREATE INDEX idx_social_posts_symbols ON social_posts USING GIN (symbols);
-```
-**Why GIN index?**
-- `symbols` is an array: `['AAPL', 'TSLA']`
-- GIN indexes are designed for arrays
-- Makes "find all posts mentioning AAPL" super fast
-- Without this: Database scans EVERY row (slow)
-- With this: Database jumps straight to matches (fast)
-
-```sql
-CREATE INDEX idx_social_posts_created ON social_posts (created_at DESC);
-```
-**Why DESC order?**
-- Most queries want recent posts first
-- `DESC` means "newest first" is pre-sorted
-- Makes "last 24 hours of posts" instant
-- Without this: Database sorts on every query (slow)
-
-```sql
-CREATE INDEX idx_social_posts_source_created ON social_posts (source, created_at DESC);
-```
-**Why composite index?**
-- Queries often filter by BOTH source AND time
-- "Show me Reddit posts from last week"
-- Composite index serves both conditions at once
-- Much faster than two separate indexes
-
-### Step 4: Connection Pooling (Preventing Bottlenecks)
-
-**You might ask:** "Why not just connect to the database directly?"
-
-**The problem:**
-- Opening a database connection is SLOW (100ms+)
-- Your API might handle 100 requests/second
-- If each request opens a new connection: 💥 Disaster
-- Database has a connection limit (usually 100)
-
-**The solution: Connection pooling**
-```python
-# Without pool: Every request connects
-request → open connection → query → close connection (SLOW!)
-
-# With pool: Reuse connections
-request → grab from pool → query → return to pool (FAST!)
+# 6. Add to .env:
+DATABASE_URL=postgresql://user:password@your-db.db.ondigitalocean.com:25060/sentiment?sslmode=require
+USE_POSTGRES=true
 ```
 
-**What you're configuring:**
-- `min_size=2`: Always keep 2 connections ready (fast first requests)
-- `max_size=10`: Never exceed 10 connections (respect DB limits)
-- Connections are shared across all requests
+**Includes pgvector:** ✓ Available in PostgreSQL 16+
 
-### Step 5: Migrations (Evolving Your Schema)
+#### AWS RDS PostgreSQL
+```bash
+# 1. Create RDS instance in AWS Console
+# 2. Select PostgreSQL 16
+# 3. Choose db.t3.micro for free tier
+# 4. Enable public access
+# 5. Create database named 'sentiment'
 
-**You might wonder:** "Can't I just modify the schema file?"
+# 6. Install pgvector extension:
+# Connect with psql and run:
+CREATE EXTENSION vector;
 
-**The problem:**
-- Production database already has data
-- You can't just DROP and recreate tables
-- Need to ADD a column, not rebuild everything
-
-**The solution: Migration system**
-```python
-# migrations/001_initial_schema.sql - Applied once
-# migrations/002_add_retweet_count.sql - Applied next
-# migrations/003_add_sentiment_index.sql - Applied after
+# 7. Add to .env:
+DATABASE_URL=postgresql://postgres:password@your-db.rds.amazonaws.com:5432/sentiment
+USE_POSTGRES=true
 ```
 
-**How it works:**
-1. System tracks which migrations ran: `applied_migrations` table
-2. On startup: Run any new migrations
-3. Never re-runs old migrations (safe!)
-4. Lets you evolve schema over time
+#### Supabase (Free Tier Available!)
+```bash
+# 1. Sign up at https://supabase.com
+# 2. Create new project
+# 3. Go to Database > Connection String
+# 4. Copy the direct connection URI
 
-### Step 6: Health Checks (Know When Things Break)
-
-**You might think:** "If it crashes, I'll know."
-
-**Reality:** Databases fail in subtle ways:
-- Connection pool exhausted
-- Disk full
-- Locks causing slowdowns
-- Replication lag
-
-**The solution: Health monitoring**
-```python
-GET /healthz/db
-→ {
-  "status": "healthy",
-  "connections_used": 3,
-  "connections_available": 7,
-  "query_time_ms": 2.5
-}
+# 5. Add to .env:
+DATABASE_URL=your_supabase_connection_string
+USE_POSTGRES=true
 ```
 
-**What you're checking:**
-1. Can we connect? (Basic availability)
-2. Can we query? (Database is responsive)
-3. How fast? (Performance degradation)
-4. Pool status? (Connection exhaustion)
+**Includes pgvector:** ✓ Pre-installed!
 
-### Step 7: Error Handling (Graceful Degradation)
+#### Neon (Serverless PostgreSQL - Free Tier)
+```bash
+# 1. Sign up at https://neon.tech
+# 2. Create project
+# 3. Copy connection string
 
-**You might ask:** "What if the database is down?"
-
-**The approach:**
-```python
-# Don't crash the whole app
-try:
-    db.query(...)
-except DatabaseError:
-    logger.error("Database unavailable")
-    # Fall back to in-memory
-    # OR return cached results
-    # OR return error with retry-after
+# 4. Add to .env:
+DATABASE_URL=your_neon_connection_string
+USE_POSTGRES=true
 ```
 
-**Why this matters:**
-- Partial functionality > complete failure
-- Users get some response vs timeout
-- Gives you time to fix the issue
+**Includes pgvector:** ✓ Supported!
 
-## Common Questions (Anticipated)
+### Option 2: Native Local PostgreSQL Installation
 
-### Q: "Do I HAVE to use PostgreSQL?"
-**A:** No, but it's recommended. The code abstracts the database layer, so you could swap it out. But PostgreSQL + pgvector is the best-supported path.
+**WHY LOCAL:**
+- Full control
+- No internet required
+- No monthly cost
+- Fast development
 
-### Q: "Can I start with in-memory and switch later?"
-**A:** Yes! That's exactly the design. Set `USE_POSTGRES=false` initially, then flip it to `true` when ready.
+#### macOS (using Homebrew)
+```bash
+# 1. Install PostgreSQL
+brew install postgresql@16
 
-### Q: "What if I already have a PostgreSQL server?"
-**A:** Perfect! Just point `DATABASE_URL` to it. No Docker needed.
+# 2. Start PostgreSQL
+brew services start postgresql@16
 
-### Q: "How much data can this handle?"
-**A:** PostgreSQL can handle millions of posts. The limiting factor is usually query design and indexing, which we've optimized.
+# 3. Create database
+createdb sentiment
 
-### Q: "What about backups?"
-**A:** You'll need to set up PostgreSQL backups separately. Standard approach: `pg_dump` on a schedule.
+# 4. Install pgvector
+brew install pgvector
 
-### Q: "Can I see the data?"
-**A:** Yes! Use any PostgreSQL client:
-- CLI: `psql -h localhost -U user -d sentiment`
-- GUI: pgAdmin, DBeaver, TablePlus, etc.
+# 5. Connect and enable extension
+psql sentiment
+CREATE EXTENSION vector;
+\q
 
-## Next Steps
+# 6. Add to .env:
+DATABASE_URL=postgresql://$(whoami)@localhost:5432/sentiment
+USE_POSTGRES=true
+```
 
-1. Review the schema in `app/storage/schemas.sql`
-2. Check the migration system in `app/storage/migrations.py`
-3. Look at connection pooling in `app/storage/db_pool.py`
-4. Run the setup: `docker-compose up -d`
-5. Verify: `python verify_db.py`
+#### Ubuntu/Debian Linux
+```bash
+# 1. Add PostgreSQL repository
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+sudo apt-get update
 
-## Troubleshooting (Predictive)
+# 2. Install PostgreSQL 16
+sudo apt-get install -y postgresql-16 postgresql-contrib-16
+
+# 3. Install pgvector
+sudo apt-get install -y postgresql-16-pgvector
+
+# 4. Start PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# 5. Create database and user
+sudo -u postgres psql
+CREATE DATABASE sentiment;
+CREATE USER sentimentuser WITH PASSWORD 'yourpassword';
+GRANT ALL PRIVILEGES ON DATABASE sentiment TO sentimentuser;
+\c sentiment
+CREATE EXTENSION vector;
+\q
+
+# 6. Add to .env:
+DATABASE_URL=postgresql://sentimentuser:yourpassword@localhost:5432/sentiment
+USE_POSTGRES=true
+```
+
+#### Windows
+```bash
+# 1. Download PostgreSQL 16 from:
+#    https://www.postgresql.org/download/windows/
+
+# 2. Run installer and follow wizard
+#    - Remember your password!
+#    - Use default port 5432
+
+# 3. Download pgvector from:
+#    https://github.com/pgvector/pgvector/releases
+
+# 4. Install pgvector:
+#    - Extract files to PostgreSQL installation directory
+#    - Copy files to lib/ and share/extension/
+
+# 5. Open SQL Shell (psql) and run:
+CREATE DATABASE sentiment;
+CREATE EXTENSION vector;
+\q
+
+# 6. Add to .env:
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/sentiment
+USE_POSTGRES=true
+```
+
+### Option 3: Use Existing PostgreSQL Server
+
+**If you already have PostgreSQL:**
+
+```bash
+# 1. Create the database
+psql -U your_user -h your_host
+CREATE DATABASE sentiment;
+\c sentiment
+CREATE EXTENSION vector;
+\q
+
+# 2. Add to .env:
+DATABASE_URL=postgresql://your_user:your_password@your_host:5432/sentiment
+USE_POSTGRES=true
+```
+
+## Verification
+
+After setting up PostgreSQL (any option above):
+
+```bash
+# 1. Test connection
+python verify_database.py
+```
+
+Expected output:
+```
+✓ [PASS] Connect to PostgreSQL
+✓ [PASS] pgvector extension installed
+✓ [PASS] Applied 1 migration(s)
+✓ [PASS] All tables exist
+...
+🎉 ALL CHECKS PASSED!
+```
+
+## Quick Comparison
+
+| Option | Cost | Setup Time | Maintenance | Best For |
+|--------|------|------------|-------------|----------|
+| **Supabase** | Free tier! | 5 minutes | None | Getting started |
+| **Neon** | Free tier! | 5 minutes | None | Serverless apps |
+| **DigitalOcean** | $7-15/mo | 5 minutes | Low | Production |
+| **AWS RDS** | $15+/mo | 15 minutes | Low | Enterprise |
+| **Local macOS** | Free | 10 minutes | You | Development |
+| **Local Linux** | Free | 15 minutes | You | Development |
+| **Local Windows** | Free | 20 minutes | You | Development |
+
+## Recommended Path
+
+### For Development:
+1. **Start with in-memory** (no setup needed!)
+2. **Move to Supabase/Neon free tier** when you want persistence
+3. **Upgrade to paid hosting** when scaling
+
+### For Production:
+1. **Use managed hosting** (DigitalOcean, AWS RDS, etc.)
+2. **Never use in-memory** (data loss on restart!)
+3. **Set up automated backups**
+
+## The Rest of the Guide
+
+Everything else in this guide remains the same:
+- Schema design rationale
+- Migration system
+- Connection pooling
+- Health checks
+- Troubleshooting
+
+**The key change:** You now have MULTIPLE ways to get PostgreSQL without Docker!
+
+## Troubleshooting
 
 ### "Connection refused"
-**Likely cause:** PostgreSQL not running
-**Fix:** `docker-compose up -d` or check if your PostgreSQL server is started
+**Likely cause:** PostgreSQL not running or wrong host
+**Fix:**
+- Cloud: Check your connection string
+- Local: `sudo systemctl status postgresql` (Linux) or `brew services list` (macOS)
 
 ### "Password authentication failed"
-**Likely cause:** Wrong credentials in `.env`
-**Fix:** Match `DATABASE_URL` to your actual PostgreSQL user/password
+**Likely cause:** Wrong credentials in DATABASE_URL
+**Fix:** Double-check username and password
+
+### "Extension 'vector' not found"
+**Likely cause:** pgvector not installed
+**Fix:**
+- Cloud: Choose PostgreSQL 16+ (includes pgvector)
+- Local: Install pgvector package for your OS
 
 ### "Database does not exist"
 **Likely cause:** Database not created
-**Fix:** `docker-compose down && docker-compose up -d` (recreates everything)
+**Fix:** Run `CREATE DATABASE sentiment;` in psql
 
-### "Queries are slow"
-**Likely cause:** Missing indexes or not using them correctly
-**Fix:** Check query EXPLAIN plans, ensure you're filtering on indexed columns
+## Next Steps
 
-### "Too many connections"
-**Likely cause:** Connection pool exhausted or not closing connections
-**Fix:** Check pool settings, look for connection leaks in code
+1. Choose your PostgreSQL option from above
+2. Set up database (5-20 minutes depending on option)
+3. Run verification: `python verify_database.py`
+4. Start app: `uvicorn app.main:app --reload`
+5. Check health: `curl http://localhost:8000/healthz/db`
 
-## Philosophy
-
-This guide follows **theory of mind** principles:
-- **Explains WHY, not just WHAT**: You understand the reasoning
-- **Anticipates questions**: Answers before you ask
-- **Provides context**: You see how pieces fit together
-- **Assumes good intent**: You're learning, not expected to know everything
-- **Empowers decisions**: You can modify based on your needs
-
-Ready to proceed with the integration!
+**No Docker required!** 🎉

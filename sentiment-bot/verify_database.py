@@ -106,9 +106,13 @@ class DatabaseVerifier:
                 f"Connection failed: {e}"
             )
             print("\n💡 TROUBLESHOOTING:")
-            print("   - Is PostgreSQL running? (docker-compose up -d)")
+            print("   - Is PostgreSQL running?")
+            print("     macOS: brew services list | grep postgresql")
+            print("     Linux: sudo systemctl status postgresql")
+            print("     Cloud: Check your database dashboard")
             print("   - Is DATABASE_URL correct in .env?")
             print("   - Can you ping the database host?")
+            print("   - See docs/DATABASE_INTEGRATION_GUIDE.md for setup help")
             return False
 
     def check_pgvector(self) -> bool:
@@ -145,8 +149,11 @@ class DatabaseVerifier:
                         "Extension not found"
                     )
                     print("\n💡 SOLUTION:")
-                    print("   Use pgvector/pgvector Docker image")
-                    print("   OR install pgvector manually")
+                    print("   Cloud databases (Supabase, Neon): pgvector is pre-installed!")
+                    print("   macOS: brew install pgvector")
+                    print("   Linux: sudo apt-get install postgresql-16-pgvector")
+                    print("   Windows: Download from github.com/pgvector/pgvector/releases")
+                    print("   Then run: CREATE EXTENSION vector; in psql")
                     return False
 
         except Exception as e:

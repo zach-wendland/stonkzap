@@ -77,9 +77,9 @@ pytest tests/ --cov=app --cov-report=html
 
 **PostgreSQL (Optional):**
 - Set `USE_POSTGRES=true` in `.env`
-- Requires Docker or external PostgreSQL server
+- Use cloud-hosted database (Supabase, Neon, etc.) or local PostgreSQL
 - Persistent storage with pgvector support
-- See "Advanced Setup" section
+- See `docs/DATABASE_INTEGRATION_GUIDE.md` for setup options
 
 ### Components
 
@@ -142,20 +142,27 @@ DATABASE_URL=  # Connection string if using PostgreSQL
 
 If you need persistent storage:
 
-1. **Start PostgreSQL with Docker:**
-```bash
-cd infra
-docker-compose up -d
-```
+1. **Set up PostgreSQL:**
+
+   Choose one of these options:
+   - **Cloud-hosted (Recommended):** Supabase, Neon, DigitalOcean, AWS RDS
+   - **Local installation:** macOS (Homebrew), Linux (apt), Windows (installer)
+
+   See `docs/DATABASE_INTEGRATION_GUIDE.md` for detailed setup instructions for each option.
 
 2. **Configure environment:**
 ```bash
 # In .env
 USE_POSTGRES=true
-DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/sentiment
+DATABASE_URL=postgresql+psycopg://user:pass@your-host:5432/sentiment
 ```
 
-3. **Restart the application:**
+3. **Verify setup:**
+```bash
+python verify_database.py
+```
+
+4. **Start the application:**
 ```bash
 uvicorn app.main:app --reload
 ```
@@ -275,11 +282,12 @@ sentiment-bot/
 │   ├── test_health.py
 │   ├── test_resolver.py
 │   └── test_sentiment.py
-├── infra/
-│   └── docker-compose.yaml    # Optional PostgreSQL setup
+├── docs/
+│   └── DATABASE_INTEGRATION_GUIDE.md  # PostgreSQL setup guide
 ├── .env                       # Configuration
 ├── .env.example               # Configuration template
 ├── requirements.txt           # Python dependencies
+├── verify_database.py         # Database verification script
 └── README.md                  # This file
 ```
 
@@ -334,18 +342,6 @@ LOG_LEVEL=WARNING
 - Use load balancer
 - Share PostgreSQL instance
 
-### Docker (Optional)
-
-Build and run with Docker:
-
-```bash
-# Build image
-docker build -t sentiment-bot .
-
-# Run container
-docker run -p 8000:8000 -v $(pwd)/.env:/app/.env sentiment-bot
-```
-
 ## Troubleshooting
 
 **Issue**: Import errors when running tests
@@ -363,7 +359,8 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 **Issue**: PostgreSQL connection fails
 ```bash
 # Solution: Check if using in-memory mode (default)
-# Or start PostgreSQL: cd infra && docker-compose up -d
+# Or see docs/DATABASE_INTEGRATION_GUIDE.md for PostgreSQL setup
+# Or run: python verify_database.py to diagnose the issue
 ```
 
 ## Contributing
