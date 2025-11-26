@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     discord_bot_token: str = ""
     discord_guild_ids: str = ""
     discord_channel_allowlist: str = ""
+    discord_alerts_channel: str = ""  # Channel ID for trading alerts
 
     # Flags
     allow_unofficial: bool = False
