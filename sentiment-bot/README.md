@@ -1,14 +1,21 @@
-# Sentiment Bot - Fintech Sentiment Analysis API
+# Sentiment Bot - AI Stock Scanner for Swing Trading
 
-Aggregates and analyzes social media sentiment about financial instruments across multiple platforms: X (Twitter), Reddit, StockTwits, and Discord.
+Aggregates and analyzes social media sentiment about financial instruments across multiple platforms: X (Twitter), Reddit, StockTwits, and Discord. **Built for identifying high-probability swing trading opportunities.**
 
-**Features:**
+**Core Features:**
 - Real-time sentiment analysis using FinBERT (trained on financial text)
 - Multi-source data aggregation (X, Reddit, StockTwits, Discord)
-- Semantic embeddings with sentence-transformers for similarity search
-- Comprehensive error handling with graceful degradation
-- PostgreSQL with pgvector for vector search
-- Redis caching for symbol resolution
+- Daily market scanner identifies sentiment/price divergences
+- Backtesting engine validates strategies on historical data
+- Discord alerts for daily trading opportunities
+- Position sizing: Automatic calculation for $2K max loss
+- Risk/reward analysis: Identify 2:1 to 5:1+ setups
+
+**For Swing Traders:**
+- 📊 `/scan` endpoint: Find daily opportunities with conviction scoring
+- 📈 `/backtest` endpoint: Validate strategies before risking capital
+- 🤖 Discord bot: Automated daily alerts with full trade setup
+- 📋 Complete quick-start guide: See [SWING_TRADING_GUIDE.md](SWING_TRADING_GUIDE.md)
 
 ---
 
