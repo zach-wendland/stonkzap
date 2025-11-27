@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     allow_unofficial: bool = False
     dry_run: bool = False
 
+    # Authentication
+    jwt_secret_key: str = "your-secret-key-change-in-production"  # Load from env
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+    jwt_refresh_token_expire_days: int = 7
+
     # Database
     database_url: str = "postgresql+psycopg://user:pass@localhost:5432/sentiment"
     redis_url: str = "redis://localhost:6379/0"

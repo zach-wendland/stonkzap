@@ -6,6 +6,8 @@ from app.orchestration.tasks import aggregate_social, healthcheck
 from app.config import get_settings
 from app.trading.scanner import scan_market, get_stock_list
 from app.trading.backtest import backtest_strategy
+from app.database import init_db
+from app.routers import auth, portfolio, trades
 
 # Configure logging
 def _configure_logging():
@@ -54,18 +56,33 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-# CORS
+# CORS - Allow frontend domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",      # React dev server
+        "http://localhost:5173",       # Vite dev server
+        "http://localhost:8000",       # Same domain (testing)
+        "https://yourdomain.com",      # Production (update with real domain)
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(auth.router)
+app.include_router(portfolio.router)
+app.include_router(trades.router)
+
 @app.on_event("startup")
 async def startup():
-    """Log startup."""
+    """Initialize database and log startup."""
+    try:
+        init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.error(f"Database init failed: {e}")
     logger.info("Sentiment Bot API starting up")
 
 @app.on_event("shutdown")
